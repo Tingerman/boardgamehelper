@@ -11,7 +11,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install --production
+RUN npm ci --omit=dev --legacy-peer-deps || npm install --omit=dev --legacy-peer-deps
 
 # Copy source
 COPY server/ ./server/
