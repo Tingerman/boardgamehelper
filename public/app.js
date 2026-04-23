@@ -26,6 +26,10 @@ const uploadProgress = document.getElementById('uploadProgress');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
 
+// Translation elements
+const translateInputBtn = document.getElementById('translateInputBtn');
+const translateAnswerChk = document.getElementById('translateAnswerChk');
+
 // Initialize
 async function init() {
   await checkStatus();
@@ -99,6 +103,15 @@ function setupEventListeners() {
   cancelUpload.addEventListener('click', closeUploadModal);
   confirmUpload.addEventListener('click', handleUpload);
 
+  // Translate input (zh -> en)
+  translateInputBtn.addEventListener('click', handleTranslateInput);
+
+  // Translate a single source (delegated)
+  sourcesList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.source-translate-btn');
+    if (btn) handleTranslateSource(btn);
+  });
+
   // Close modal on outside click
   uploadModal.addEventListener('click', (e) => {
     if (e.target === uploadModal) closeUploadModal();
@@ -111,6 +124,40 @@ function closeUploadModal() {
   pdfInput.value = '';
   bookNameInput.value = '';
   uploadProgress.style.display = 'none';
+}
+
+// Translate a piece of text via backend API
+async function translateText(text, target, extra = {}) {
+  const response = await fetch('/api/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, target, ...extra }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || '翻译失败');
+  }
+  const data = await response.json();
+  return data.translated;
+}
+
+// Translate current input (zh -> en) and fill back
+async function handleTranslateInput() {
+  const text = queryInput.value.trim();
+  if (!text || isLoading) return;
+
+  const originalLabel = translateInputBtn.textContent;
+  translateInputBtn.disabled = true;
+  translateInputBtn.textContent = '翻译中...';
+  try {
+    const translated = await translateText(text, 'en', { bookId: selectedBookId });
+    queryInput.value = translated;
+  } catch (err) {
+    alert('翻译失败：' + err.message);
+  } finally {
+    translateInputBtn.disabled = false;
+    translateInputBtn.textContent = originalLabel;
+  }
 }
 
 // Handle query
@@ -139,15 +186,30 @@ async function handleQuery() {
 
     const data = await response.json();
 
+    // Optionally translate answer to Chinese
+    let answer = data.answer;
+    if (translateAnswerChk.checked && answer) {
+      try {
+        resultsEl.innerHTML = '<div class="results-content loading">翻译答案中...</div>';
+        answer = await translateText(answer, 'zh');
+      } catch (err) {
+        console.error('Answer translation failed:', err);
+      }
+    }
+
     // Display answer
-    resultsEl.innerHTML = `<div class="results-content">${data.answer}</div>`;
+    resultsEl.innerHTML = `<div class="results-content">${answer}</div>`;
 
     // Display sources
     if (data.sources && data.sources.length > 0) {
-      sourcesList.innerHTML = data.sources.map(source => `
-        <div class="source-item">
+      sourcesList.innerHTML = data.sources.map((source, idx) => `
+        <div class="source-item" data-idx="${idx}">
           <h4>${source.bookName}</h4>
-          <p>${source.content}</p>
+          <p class="source-content">${source.content}</p>
+          <div class="source-actions">
+            <button class="btn btn-sm source-translate-btn" data-action="translate">译为中文</button>
+          </div>
+          <div class="source-translation" style="display: none;"></div>
         </div>
       `).join('');
       sourcesSection.style.display = 'block';
@@ -159,6 +221,44 @@ async function handleQuery() {
   } finally {
     isLoading = false;
     queryBtn.disabled = false;
+  }
+}
+
+// Translate a single source's original text to Chinese, toggle show/hide
+async function handleTranslateSource(btn) {
+  const item = btn.closest('.source-item');
+  if (!item) return;
+  const contentEl = item.querySelector('.source-content');
+  const translationEl = item.querySelector('.source-translation');
+  if (!contentEl || !translationEl) return;
+
+  // Toggle hide if already translated and currently shown
+  if (translationEl.dataset.translated === '1') {
+    const shown = translationEl.style.display !== 'none';
+    translationEl.style.display = shown ? 'none' : 'block';
+    btn.textContent = shown ? '译为中文' : '隐藏译文';
+    return;
+  }
+
+  const original = contentEl.textContent || '';
+  if (!original.trim()) return;
+
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = '翻译中...';
+  try {
+    const translated = await translateText(original, 'zh');
+    translationEl.textContent = translated;
+    translationEl.dataset.translated = '1';
+    translationEl.style.display = 'block';
+    btn.textContent = '隐藏译文';
+  } catch (err) {
+    translationEl.textContent = '翻译失败：' + err.message;
+    translationEl.style.display = 'block';
+    translationEl.style.color = '#ff4d4f';
+    btn.textContent = originalLabel;
+  } finally {
+    btn.disabled = false;
   }
 }
 

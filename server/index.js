@@ -148,6 +148,22 @@ app.post('/api/query', async (req, res) => {
   }
 });
 
+// Translate text
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text, target, bookId } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+    const t = target === 'zh' ? 'zh' : 'en';
+    const translated = await rag.translate(text, t, { bookId: bookId || null });
+    res.json({ translated });
+  } catch (err) {
+    console.error('Translate error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Delete a book
 app.delete('/api/books/:id', async (req, res) => {
   try {

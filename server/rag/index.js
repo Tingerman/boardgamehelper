@@ -46,6 +46,42 @@ class ZhipuClient {
     });
     return data.choices[0].message.content;
   }
+
+  async translate(text, target = 'en', { reference = '' } = {}) {
+    const targetName = target === 'en' ? 'English' : 'Chinese (Simplified)';
+
+    const messages = [
+      {
+        role: 'system',
+        content:
+          `You are a professional translator. Translate the user's text to ${targetName}. ` +
+          `Output ONLY the translation, with no explanations, no quotes, no prefixes.` +
+          (reference
+            ? ` You are given REFERENCE MATERIAL from a domain knowledge base. ` +
+              `When a term or phrase in the source text corresponds to a term that ALREADY EXISTS in the reference material, ` +
+              `you MUST reuse the EXACT original wording (capitalization, spelling, and phrasing) from the reference material ` +
+              `instead of producing a new translation. Only translate freely for words that do not appear in the reference. ` +
+              `Do NOT quote or mention the reference material itself in the output.`
+            : ''),
+      },
+    ];
+
+    if (reference) {
+      messages.push({
+        role: 'user',
+        content: `REFERENCE MATERIAL (for terminology only, do not translate this):\n"""\n${reference}\n"""`,
+      });
+      messages.push({
+        role: 'assistant',
+        content: 'Understood. I will reuse exact terms from the reference when applicable.',
+      });
+    }
+
+    messages.push({ role: 'user', content: text });
+
+    const content = await this.chat(messages, { temperature: 0.2, maxTokens: 2048 });
+    return content.trim();
+  }
 }
 
 class RAGEngine {
@@ -67,6 +103,51 @@ class RAGEngine {
 
   async getEmbedding(text) {
     return this.client.embed(text);
+  }
+
+  async translate(text, target = 'en', { bookId = null, useKnowledge = true } = {}) {
+    let reference = '';
+
+    // For zh -> en, ground terminology in the knowledge base so that
+    // terms existing in the corpus are reused verbatim in English.
+    if (target === 'en' && useKnowledge && this.documents.length > 0) {
+      try {
+        reference = await this._retrieveReference(text, bookId);
+      } catch (err) {
+        console.error('Translate reference retrieval failed:', err.message);
+      }
+    }
+
+    return this.client.translate(text, target, { reference });
+  }
+
+  async _retrieveReference(query, bookId = null, topK = 5, maxChars = 2000) {
+    const queryEmbedding = await this.getEmbedding(query);
+
+    let pool = this.documents;
+    if (bookId) {
+      pool = pool.filter(d => d.metadata.bookId === bookId);
+      if (pool.length === 0) pool = this.documents;
+    }
+
+    const scored = pool.map(doc => ({
+      doc,
+      score: this.cosineSimilarity(queryEmbedding, doc.embedding),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+
+    const picked = [];
+    let total = 0;
+    for (const { doc } of scored.slice(0, topK)) {
+      const piece = doc.pageContent.trim();
+      if (total + piece.length > maxChars) {
+        picked.push(piece.slice(0, Math.max(0, maxChars - total)));
+        break;
+      }
+      picked.push(piece);
+      total += piece.length;
+    }
+    return picked.join('\n---\n');
   }
 
   async ingestDocument(bookId, bookName, text, chunkSize = 500) {
