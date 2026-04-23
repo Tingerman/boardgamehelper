@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桌游规则查询系统</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>桌游规则查询</h1>
+      <div class="status" id="status">
+        <span class="status-dot"></span>
+        <span class="status-text">初始化中...</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Left Sidebar: Books -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h2>规则书</h2>
+          <button class="btn btn-primary btn-sm" id="uploadBtn">+ 添加</button>
+        </div>
+        <div class="book-list" id="bookList">
+          <div class="empty-state">暂无规则书</div>
+        </div>
+      </aside>
+
+      <!-- Center: Query -->
+      <section class="content">
+        <div class="query-section">
+          <div class="input-group">
+            <input
+              type="text"
+              id="queryInput"
+              placeholder="输入问题，如：如何进行生产？"
+              autocomplete="off"
+            >
+            <button class="btn btn-primary" id="queryBtn">查询</button>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-section">
+          <div class="results-header">
+            <h3>答案</h3>
+          </div>
+          <div class="results-content" id="results">
+            <div class="empty-state">
+              左侧添加规则书后，输入问题开始查询
+            </div>
+          </div>
+        </div>
+
+        <!-- Sources -->
+        <div class="sources-section" id="sourcesSection" style="display: none;">
+          <div class="sources-header">
+            <h3>参考来源</h3>
+          </div>
+          <div class="sources-list" id="sourcesList"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal" id="uploadModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>添加规则书</h3>
+        <button class="close-btn" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>选择 PDF 文件</label>
+          <input type="file" id="pdfInput" accept=".pdf" />
+        </div>
+        <div class="form-group">
+          <label>名称（可选）</label>
+          <input type="text" id="bookNameInput" placeholder="如：大创造时代" />
+        </div>
+        <div class="upload-progress" id="uploadProgress" style="display: none;">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <div class="progress-text" id="progressText">处理中...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" id="cancelUpload">取消</button>
+        <button class="btn btn-primary" id="confirmUpload">上传</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

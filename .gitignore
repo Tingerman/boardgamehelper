@@ -1,0 +1,36 @@
+# ===== 依赖 =====
+node_modules/
+
+# ===== 环境变量（含 API Key，切勿提交）=====
+.env
+.env.local
+.env.*.local
+
+# ===== 运行时产物 =====
+data/temp/
+server/storage/*.db
+server/storage/*.sqlite
+server/storage/*.json
+
+# ===== 日志 =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE / AI 工具 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+.comate/
+
+# ===== 构建/缓存 =====
+dist/
+build/
+.cache/
+coverage/

@@ -1,0 +1,19 @@
+{
+  "name": "boardgame-rag",
+  "version": "1.0.0",
+  "description": "RAG system for board game rulebooks",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "@langchain/community": "^1.1.27",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "langchain": "^0.1.20",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1"
+  }
+}
