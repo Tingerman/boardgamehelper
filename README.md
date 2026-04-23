@@ -104,20 +104,6 @@ docker compose up -d
 | `ZHIPU_EMBEDDING_MODEL` | 否 | 嵌入模型，默认 `embedding-3` |
 | `ZHIPU_EMBEDDING_DIM` | 否 | 嵌入维度，默认 `1024` |
 
-## 推送到 Git
-
-```bash
-git init
-git add .
-git commit -m "init: board game RAG"
-git branch -M main
-git remote add origin <你的仓库地址>
-git push -u origin main
-```
-
-> `.env`、`node_modules/`、`data/temp/` 已在 `.gitignore` 中排除，不会被提交。
-> `data/books/` 下的 PDF **会** 被提交，如不希望提交样例 PDF，请在 `.gitignore` 中添加 `data/books/*.pdf`。
-
 ## 部署建议
 
 - **云主机（推荐）**：`docker compose up -d`
