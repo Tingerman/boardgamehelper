@@ -168,9 +168,22 @@ app.post('/api/translate', async (req, res) => {
 app.delete('/api/books/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    // Note: This would require more implementation to actually remove from vector store
-    res.json({ success: true, message: 'Book removed (memory only)' });
+
+    // 1. 内存：从向量库和 books Map 里移除
+    const removed = rag.deleteBook(id);
+    if (!removed) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+
+    // 2. 磁盘：把 data/books/ 下的 PDF 也删掉，否则下次 initRAG 会重新 ingest
+    const pdfPath = path.join(booksDir, `${id}.pdf`);
+    if (fs.existsSync(pdfPath)) {
+      fs.unlinkSync(pdfPath);
+    }
+
+    res.json({ success: true });
   } catch (err) {
+    console.error('Delete error:', err);
     res.status(500).json({ error: err.message });
   }
 });

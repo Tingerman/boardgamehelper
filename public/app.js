@@ -75,16 +75,42 @@ function renderBookList() {
   bookListEl.innerHTML = books.map(book => `
     <div class="book-item ${book.id === selectedBookId ? 'active' : ''}"
          data-id="${book.id}">
-      <h4>${book.name}</h4>
-      <p>${book.chunkCount} 个段落</p>
+      <div class="book-info">
+        <h4>${book.name}</h4>
+        <p>${book.chunkCount} 个段落</p>
+      </div>
+      <button class="book-delete" data-id="${book.id}" title="删除">×</button>
     </div>
   `).join('');
 
   // Add click handlers
   document.querySelectorAll('.book-item').forEach(item => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', (e) => {
+      // 点到删除按钮就不切换选中
+      if (e.target.classList.contains('book-delete')) return;
       selectedBookId = item.dataset.id;
       renderBookList();
+    });
+  });
+
+  // 删除按钮
+  document.querySelectorAll('.book-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      const book = books.find(b => b.id === id);
+      if (!confirm(`确定删除「${book ? book.name : id}」？此操作不可恢复。`)) return;
+      try {
+        const res = await fetch(`/api/books/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        if (selectedBookId === id) selectedBookId = null;
+        await loadBooks();
+      } catch (err) {
+        alert('删除失败：' + err.message);
+      }
     });
   });
 }

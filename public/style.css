@@ -105,6 +105,41 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.book-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.book-delete {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #999;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.book-item:hover .book-delete {
+  color: #666;
+}
+
+.book-delete:hover {
+  background: #ff4d4f;
+  color: #fff;
 }
 
 .book-item:hover {

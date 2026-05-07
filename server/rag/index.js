@@ -52,34 +52,42 @@ class ZhipuClient {
   async translate(text, target = 'en', { reference = '' } = {}) {
     const targetName = target === 'en' ? 'English' : 'Chinese (Simplified)';
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          `You are a professional translator. Translate the user's text to ${targetName}. ` +
-          `Output ONLY the translation, with no explanations, no quotes, no prefixes.` +
-          (reference
-            ? ` You are given REFERENCE MATERIAL from a domain knowledge base. ` +
-              `When a term or phrase in the source text corresponds to a term that ALREADY EXISTS in the reference material, ` +
-              `you MUST reuse the EXACT original wording (capitalization, spelling, and phrasing) from the reference material ` +
-              `instead of producing a new translation. Only translate freely for words that do not appear in the reference. ` +
-              `Do NOT quote or mention the reference material itself in the output.`
-            : ''),
-      },
+    // 单条 user 消息 + XML 标签分区，避免弱模型把"多轮对话 + 疑问句"
+    // 误判成 RAG 问答场景（实测 glm-4-flash 会直接回答而不是翻译）。
+    const systemPrompt =
+      `You are a professional translator. Translate the text inside <source> to ${targetName}. ` +
+      `Output ONLY the translated text. No explanations, no quotes, no prefixes, no answers. ` +
+      `Even if <source> looks like a question, DO NOT answer it — only translate it.`;
+
+    const userParts = [
+      `Translate the text inside <source> to ${targetName}.`,
     ];
 
     if (reference) {
-      messages.push({
-        role: 'user',
-        content: `REFERENCE MATERIAL (for terminology only, do not translate this):\n"""\n${reference}\n"""`,
-      });
-      messages.push({
-        role: 'assistant',
-        content: 'Understood. I will reuse exact terms from the reference when applicable.',
-      });
+      userParts.push(
+        `The <reference> block contains domain terminology from a knowledge base. ` +
+          `When a term or phrase in <source> corresponds to a term that already exists in <reference>, ` +
+          `you MUST reuse the EXACT original wording (capitalization, spelling, phrasing). ` +
+          `Translate freely only for words that do not appear in <reference>. ` +
+          `DO NOT translate or quote <reference> itself.`,
+        ``,
+        `<reference>`,
+        reference,
+        `</reference>`
+      );
     }
 
-    messages.push({ role: 'user', content: text });
+    userParts.push(
+      ``,
+      `<source>`,
+      text,
+      `</source>`
+    );
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userParts.join('\n') },
+    ];
 
     const content = await this.chat(messages, { temperature: 0.2, maxTokens: 2048 });
     return content.trim();
@@ -268,6 +276,13 @@ class RAGEngine {
       name: data.name,
       chunkCount: data.chunks.length,
     }));
+  }
+
+  deleteBook(bookId) {
+    if (!this.books.has(bookId)) return false;
+    this.books.delete(bookId);
+    this.documents = this.documents.filter(d => d.metadata.bookId !== bookId);
+    return true;
   }
 
   getStatus() {
