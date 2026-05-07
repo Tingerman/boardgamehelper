@@ -1,4 +1,6 @@
 // 智谱 AI 免费 API 配置
+const { splitTextIntoChunks } = require('./pdf');
+
 const ZHIPU_BASE = 'https://open.bigmodel.cn/api/paas/v4';
 const CHAT_MODEL = process.env.ZHIPU_CHAT_MODEL || 'glm-4-flash';
 const EMBEDDING_MODEL = process.env.ZHIPU_EMBEDDING_MODEL || 'embedding-3';
@@ -153,11 +155,12 @@ class RAGEngine {
   async ingestDocument(bookId, bookName, text, chunkSize = 500) {
     console.log(`Ingesting document: ${bookName}`);
 
-    const chunks = this.splitIntoChunks(text, chunkSize);
+    // 升级到 v2 切分器：段落感知 + 长段降级按句 + 50 字 overlap + metadata
+    const chunks = splitTextIntoChunks(text, chunkSize, 50);
 
     const embeddings = [];
     for (let i = 0; i < chunks.length; i++) {
-      const embedding = await this.getEmbedding(chunks[i]);
+      const embedding = await this.getEmbedding(chunks[i].text);
       embeddings.push(embedding);
       if ((i + 1) % 10 === 0) {
         console.log(`Embedded ${i + 1}/${chunks.length} chunks`);
@@ -165,12 +168,14 @@ class RAGEngine {
     }
 
     const docs = chunks.map((chunk, idx) => ({
-      pageContent: chunk,
+      pageContent: chunk.text,
       embedding: embeddings[idx],
       metadata: {
         bookId,
         bookName,
         chunkIndex: idx,
+        // 保留切分来源：'paragraph' 表示整段切出，'sentence' 表示大段被按句硬拆
+        source: chunk.metadata && chunk.metadata.source,
       },
     }));
 
@@ -184,25 +189,6 @@ class RAGEngine {
 
     console.log(`Ingested ${chunks.length} chunks for ${bookName}`);
     return { success: true, chunks: chunks.length };
-  }
-
-  splitIntoChunks(text, chunkSize) {
-    const sentences = text.split(/(?<=[。！？.!?])\s+/);
-    const chunks = [];
-    let currentChunk = '';
-
-    for (const sentence of sentences) {
-      if (currentChunk.length + sentence.length > chunkSize) {
-        if (currentChunk) chunks.push(currentChunk.trim());
-        currentChunk = sentence;
-      } else {
-        currentChunk += ' ' + sentence;
-      }
-    }
-
-    if (currentChunk) chunks.push(currentChunk.trim());
-
-    return chunks;
   }
 
   cosineSimilarity(a, b) {

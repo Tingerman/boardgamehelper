@@ -28,16 +28,26 @@ async function parsePDF(pdfPath) {
  * @returns {string} - Cleaned text
  */
 function preprocessText(text) {
-  // Remove excessive whitespace
-  let cleaned = text.replace(/\s+/g, ' ');
+  // 1) 统一换行符（Windows / 老 Mac → \n）
+  let cleaned = text.replace(/\r\n?/g, '\n');
 
-  // Fix common PDF parsing issues
-  cleaned = cleaned.replace(/([。！？])\s*([。！？])/g, '$1$2');
-  cleaned = cleaned.replace(/\n\s*\n/g, '\n\n');
-
-  // Remove page numbers and headers/footers (common patterns)
+  // 2) 先做"基于行"的清理 —— 必须在折叠空白之前，否则 /m 行锚点就失效
+  //    去 "Page 3 of 20" 这类页眉页脚
   cleaned = cleaned.replace(/Page\s*\d+\s*(of\s*\d+)?/gi, '');
+  //    去孤立数字行（纯页码）
   cleaned = cleaned.replace(/^\s*\d+\s*$/gm, '');
+
+  // 3) 只折叠"行内"连续空白，保留换行符 \n —— 段落边界活下来
+  cleaned = cleaned.replace(/[ \t\f\v]+/g, ' ');
+
+  // 4) 每行去首尾空格
+  cleaned = cleaned.split('\n').map((l) => l.trim()).join('\n');
+
+  // 5) 归一化段落边界：3 个以上连续换行 → 2 个；单个换行保留（行内换行）
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  // 6) 修 PDF 常见的标点间插空格（如 "。 ！" → "。！"）
+  cleaned = cleaned.replace(/([。！？])\s*([。！？])/g, '$1$2');
 
   return cleaned.trim();
 }
@@ -73,7 +83,8 @@ function splitTextIntoChunks(text, chunkSize = 500, overlap = 50) {
       }
 
       // Split long paragraph by sentences
-      const sentences = trimmed.split(/(?<=[。！？.!?])\s+/);
+      // \s* 而非 \s+：兼容中文标点后无空格的常见情况
+      const sentences = trimmed.split(/(?<=[。！？.!?])\s*/).filter(Boolean);
       let tempChunk = '';
 
       for (const sentence of sentences) {
