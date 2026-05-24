@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
   <title>桌游规则查询系统</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -74,6 +75,18 @@
     </main>
   </div>
 
+  <!-- Op Log floating panel -->
+  <div class="op-log-panel" id="opLogPanel" hidden>
+    <div class="op-log-header">
+      <span class="op-log-title">操作日志</span>
+      <div class="op-log-actions">
+        <button class="op-log-btn" id="opLogClear" title="清空">清空</button>
+        <button class="op-log-btn" id="opLogToggle" title="折叠">−</button>
+      </div>
+    </div>
+    <div class="op-log-body" id="opLogBody"></div>
+  </div>
+
   <!-- Upload Modal -->
   <div class="modal" id="uploadModal">
     <div class="modal-content">
@@ -82,14 +95,54 @@
         <button class="close-btn" id="closeModal">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label>选择 PDF 文件</label>
-          <input type="file" id="pdfInput" accept=".pdf" />
+        <!-- 来源切换 -->
+        <div class="source-tabs">
+          <button class="source-tab active" data-source="pdf">PDF 文件</button>
+          <button class="source-tab" data-source="image">图片</button>
+          <button class="source-tab" data-source="url">B站 opus URL</button>
         </div>
-        <div class="form-group">
-          <label>名称（可选）</label>
-          <input type="text" id="bookNameInput" placeholder="如：大创造时代" />
+
+        <!-- 各来源 panel -->
+        <div class="source-panel" data-source="pdf">
+          <div class="form-group">
+            <label>选择 PDF 文件</label>
+            <input type="file" id="pdfInput" accept=".pdf" />
+          </div>
         </div>
+        <div class="source-panel" data-source="image" hidden>
+          <div class="form-group">
+            <label>选择图片（可多选）</label>
+            <input type="file" id="imageInput" accept="image/*" multiple />
+          </div>
+          <div class="hint">将串行 OCR 提取文字。支持 jpg/png/webp。</div>
+        </div>
+        <div class="source-panel" data-source="url" hidden>
+          <div class="form-group">
+            <label>B站 opus URL</label>
+            <input type="text" id="urlInput" placeholder="https://t.bilibili.com/123456789..." />
+          </div>
+        </div>
+
+        <!-- 共享 metadata 字段（三者全空 = 走 LLM 自动抽取）-->
+        <div class="shared-meta">
+          <div class="form-group">
+            <label>名称（可选）</label>
+            <input type="text" id="bookNameInput" placeholder="如：大创造时代" />
+          </div>
+          <div class="form-group">
+            <label>中文名（可选，三者全空时走 LLM 自动抽取）</label>
+            <input type="text" id="zhNameInput" placeholder="如：大创造时代" />
+          </div>
+          <div class="form-group">
+            <label>英文名（可选）</label>
+            <input type="text" id="enNameInput" placeholder="如：Great Western Trail" />
+          </div>
+          <div class="form-group">
+            <label>简介（可选，约 50 字）</label>
+            <textarea id="summaryInput" rows="2" placeholder="一句话介绍游戏玩法或主题"></textarea>
+          </div>
+        </div>
+
         <div class="upload-progress" id="uploadProgress" style="display: none;">
           <div class="progress-bar">
             <div class="progress-fill" id="progressFill"></div>

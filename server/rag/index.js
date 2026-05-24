@@ -1,10 +1,14 @@
 // 智谱 AI 免费 API 配置
-const { splitTextIntoChunks } = require('./pdf');
+const { splitTextIntoChunks, splitTextWithImageMap } = require('./pdf');
 
 const ZHIPU_BASE = 'https://open.bigmodel.cn/api/paas/v4';
 const CHAT_MODEL = process.env.ZHIPU_CHAT_MODEL || 'glm-4-flash';
 const EMBEDDING_MODEL = process.env.ZHIPU_EMBEDDING_MODEL || 'embedding-3';
 const EMBEDDING_DIM = Number(process.env.ZHIPU_EMBEDDING_DIM || 1024);
+const DEFAULT_CHUNK_SIZE = 500;
+
+// chunk 全局唯一 id（BM25 / Agent state 共用）
+const chunkId = (bookId, chunkIndex) => `${bookId}::${chunkIndex}`;
 
 class ZhipuClient {
   constructor(apiKey) {
@@ -39,9 +43,9 @@ class ZhipuClient {
     return data.data[0].embedding;
   }
 
-  async chat(messages, { temperature = 0.7, maxTokens = 1024 } = {}) {
+  async chat(messages, { temperature = 0.7, maxTokens = 1024, model } = {}) {
     const data = await this._post('/chat/completions', {
-      model: CHAT_MODEL,
+      model: model || CHAT_MODEL,
       messages,
       temperature,
       max_tokens: maxTokens,
@@ -100,6 +104,7 @@ class RAGEngine {
     this.documents = [];
     this.books = new Map();
     this.initialized = false;
+    this.bm25 = null; // 懒加载的 ESM 模块单例
   }
 
   async initialize() {
@@ -107,8 +112,36 @@ class RAGEngine {
 
     console.log('Initializing RAG engine (Zhipu API mode)...');
     this.client = new ZhipuClient(process.env.ZHIPU_API_KEY);
+
+    // 动态 import ESM 的 bm25 模块（CJS ↔ ESM 桥接）
+    try {
+      const mod = await import('../retrieval/bm25.mjs');
+      this.bm25 = mod.bm25Index;
+      console.log('BM25 index module loaded');
+    } catch (err) {
+      console.warn('BM25 module load failed, continuing dense-only:', err.message);
+    }
+
+    // 动态 import metadata 抽取模块
+    try {
+      const meta = await import('./metadata.mjs');
+      this._extractBookMetadata = meta.extractBookMetadata;
+      this._extractSummary = meta.extractSummary;
+    } catch (err) {
+      console.warn('metadata module load failed:', err.message);
+    }
+
     this.initialized = true;
     console.log(`RAG engine initialized (chat=${CHAT_MODEL}, embedding=${EMBEDDING_MODEL})`);
+  }
+
+  // 给 Agent 节点用
+  getDocuments() {
+    return this.documents;
+  }
+
+  getBm25() {
+    return this.bm25;
   }
 
   async getEmbedding(text) {
@@ -160,11 +193,20 @@ class RAGEngine {
     return picked.join('\n---\n');
   }
 
-  async ingestDocument(bookId, bookName, text, chunkSize = 500) {
+  async ingestDocument(bookId, bookName, text, optionsOrChunkSize = {}) {
+    // 兼容老签名 ingestDocument(bookId, bookName, text, chunkSize=500)
+    const options = typeof optionsOrChunkSize === 'number'
+      ? { chunkSize: optionsOrChunkSize }
+      : (optionsOrChunkSize || {});
+    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
+
     console.log(`Ingesting document: ${bookName}`);
 
     // 升级到 v2 切分器：段落感知 + 长段降级按句 + 50 字 overlap + metadata
-    const chunks = splitTextIntoChunks(text, chunkSize, 50);
+    // 若有 imageSegments → 走 image-aware 切分，每个 chunk 携带 imageIndices
+    const chunks = Array.isArray(options.imageSegments) && options.imageSegments.length > 0
+      ? splitTextWithImageMap(text, options.imageSegments, chunkSize, 50)
+      : splitTextIntoChunks(text, chunkSize, 50);
 
     const embeddings = [];
     for (let i = 0; i < chunks.length; i++) {
@@ -176,6 +218,7 @@ class RAGEngine {
     }
 
     const docs = chunks.map((chunk, idx) => ({
+      id: chunkId(bookId, idx),
       pageContent: chunk.text,
       embedding: embeddings[idx],
       metadata: {
@@ -184,19 +227,54 @@ class RAGEngine {
         chunkIndex: idx,
         // 保留切分来源：'paragraph' 表示整段切出，'sentence' 表示大段被按句硬拆
         source: chunk.metadata && chunk.metadata.source,
+        // 图片对齐：仅当走 splitTextWithImageMap 时非空
+        imageIndices: (chunk.metadata && chunk.metadata.imageIndices) || [],
       },
     }));
 
+    // 解析或抽取 book 级 metadata
+    let meta = options.metadata;
+    if (!meta && this._extractBookMetadata) {
+      try {
+        const head = text.slice(0, 2000);
+        meta = await this._extractBookMetadata(
+          (msgs, opts) => this.client.chat(msgs, opts),
+          head,
+          { fallbackZhName: bookName }
+        );
+      } catch (err) {
+        console.warn(`metadata extract for ${bookId} failed:`, err.message);
+      }
+    }
+    if (!meta) {
+      meta = { zhName: bookName, enName: null, summary: '' };
+    }
+
     this.books.set(bookId, {
+      bookId,
       name: bookName,
+      displayName: bookName,
+      zhName: meta.zhName,
+      enName: meta.enName,
+      summary: meta.summary,
+      source: options.source || 'pdf',
+      sourceMeta: options.sourceMeta || {},
+      createdAt: Date.now(),
       chunks: docs,
       text: text,
     });
 
     this.documents.push(...docs);
 
+    // 同步写入 BM25 倒排索引（与 dense 保持同步）
+    if (this.bm25) {
+      for (const d of docs) {
+        this.bm25.addDocument(d.id, d.pageContent);
+      }
+    }
+
     console.log(`Ingested ${chunks.length} chunks for ${bookName}`);
-    return { success: true, chunks: chunks.length };
+    return { success: true, chunks: chunks.length, metadata: meta };
   }
 
   cosineSimilarity(a, b) {
@@ -213,8 +291,12 @@ class RAGEngine {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
+  /**
+   * @deprecated 直线 RAG 路径，已被 server/agent/graph.mjs 取代。
+   * 仅保留作为 LangGraph Agent 异常时的 fallback（见 /api/query 路由）。
+   */
   async query(question, bookId = null) {
-    console.log('Processing query:', question);
+    console.log('Processing query (legacy fallback):', question);
 
     const questionEmbedding = await this.getEmbedding(question);
 
@@ -274,12 +356,81 @@ class RAGEngine {
     return Array.from(this.books.entries()).map(([id, data]) => ({
       id,
       name: data.name,
+      zhName: data.zhName || null,
+      enName: data.enName || null,
+      summary: data.summary || '',
+      source: data.source || 'pdf',
       chunkCount: data.chunks.length,
     }));
   }
 
+  // 提供给 N6 / matcher：返回 book 元信息（含 zhName/enName/summary）
+  getBookMeta(bookId) {
+    const b = this.books.get(bookId);
+    if (!b) return null;
+    return {
+      bookId,
+      displayName: b.displayName || b.name,
+      zhName: b.zhName || null,
+      enName: b.enName || null,
+      summary: b.summary || '',
+      source: b.source || 'pdf',
+      sourceMeta: b.sourceMeta || {},
+    };
+  }
+
+  // 取 book 头部 N 字（启动迁移用）
+  getBookHead(bookId, maxChars = 2000) {
+    const b = this.books.get(bookId);
+    if (!b) return '';
+    return (b.text || '').slice(0, maxChars);
+  }
+
+  // 启动迁移：给历史无 metadata 的 books 补抽 zhName/summary
+  async migrateBooksMetadata({ concurrency = 3, onProgress } = {}) {
+    if (!this._extractBookMetadata) return { migrated: 0 };
+    const toMigrate = [];
+    for (const [id, b] of this.books.entries()) {
+      if (!b.summary || !b.zhName) toMigrate.push(id);
+    }
+    let migrated = 0;
+    let i = 0;
+    const total = toMigrate.length;
+    const worker = async () => {
+      while (i < total) {
+        const idx = i++;
+        const id = toMigrate[idx];
+        const b = this.books.get(id);
+        if (!b) continue;
+        try {
+          const meta = await this._extractBookMetadata(
+            (msgs, opts) => this.client.chat(msgs, opts),
+            (b.text || '').slice(0, 2000),
+            { fallbackZhName: b.displayName || b.name }
+          );
+          b.zhName = meta.zhName || b.zhName || b.name;
+          b.enName = meta.enName || b.enName || null;
+          b.summary = meta.summary || b.summary || '';
+          migrated++;
+          if (onProgress) onProgress({ id, idx, total });
+        } catch (err) {
+          console.warn(`[migrate] ${id} failed:`, err.message);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker));
+    return { migrated, total };
+  }
+
   deleteBook(bookId) {
     if (!this.books.has(bookId)) return false;
+    const book = this.books.get(bookId);
+    // 同步从 BM25 索引移除
+    if (this.bm25 && book && book.chunks) {
+      for (const c of book.chunks) {
+        this.bm25.removeDocument(c.id);
+      }
+    }
     this.books.delete(bookId);
     this.documents = this.documents.filter(d => d.metadata.bookId !== bookId);
     return true;
@@ -294,6 +445,75 @@ class RAGEngine {
       chatModel: CHAT_MODEL,
       embeddingModel: EMBEDDING_MODEL,
     };
+  }
+
+  // === book-cache-persist ===
+
+  /**
+   * 暴露当前 cache 校验所需的运行环境元信息，供 server/index.js 调用 isCacheValid。
+   */
+  getCacheEnv() {
+    return {
+      embeddingModel: EMBEDDING_MODEL,
+      embeddingDim: EMBEDDING_DIM,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+    };
+  }
+
+  /**
+   * 把内存里的 book 序列化成 cache payload，字段 1:1 对应 books.get() 形状。
+   * @param {string} bookId
+   * @param {{pdfHash?: string|null}} opts
+   */
+  serializeBook(bookId, { pdfHash = null } = {}) {
+    const b = this.books.get(bookId);
+    if (!b) return null;
+    return {
+      // 必须与 server/rag/cache.mjs 的 SCHEMA_VERSION 保持一致
+      schemaVersion: 2,
+      embeddingModel: EMBEDDING_MODEL,
+      embeddingDim: EMBEDDING_DIM,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+      pdfHash,
+      bookId,
+      bookName: b.name,
+      displayName: b.displayName || b.name,
+      zhName: b.zhName || null,
+      enName: b.enName || null,
+      summary: b.summary || '',
+      source: b.source || 'pdf',
+      sourceMeta: b.sourceMeta || {},
+      createdAt: b.createdAt || Date.now(),
+      text: b.text || '',
+      chunks: b.chunks || [],
+    };
+  }
+
+  /**
+   * 从 cache payload 恢复 book 进内存，不调任何 LLM。
+   * 返回 { chunks } 或 null（无效 payload）。
+   */
+  loadBookFromCache(cache) {
+    if (!cache || !cache.bookId || !Array.isArray(cache.chunks)) return null;
+    const docs = cache.chunks;
+    this.books.set(cache.bookId, {
+      bookId: cache.bookId,
+      name: cache.bookName,
+      displayName: cache.displayName || cache.bookName,
+      zhName: cache.zhName || null,
+      enName: cache.enName || null,
+      summary: cache.summary || '',
+      source: cache.source || 'pdf',
+      sourceMeta: cache.sourceMeta || {},
+      createdAt: cache.createdAt || Date.now(),
+      chunks: docs,
+      text: cache.text || '',
+    });
+    this.documents.push(...docs);
+    if (this.bm25) {
+      for (const d of docs) this.bm25.addDocument(d.id, d.pageContent);
+    }
+    return { chunks: docs.length };
   }
 }
 

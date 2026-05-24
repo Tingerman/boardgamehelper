@@ -399,6 +399,67 @@ body {
   padding: 20px;
 }
 
+.source-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e5e5e5;
+  margin-bottom: 16px;
+}
+
+.source-tab {
+  flex: 1;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  transition: color .2s, border-color .2s;
+}
+
+.source-tab:hover {
+  color: #1890ff;
+}
+
+.source-tab.active {
+  color: #1890ff;
+  border-bottom-color: #1890ff;
+  font-weight: 500;
+}
+
+.source-panel[hidden] {
+  display: none;
+}
+
+.shared-meta {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e5e5;
+}
+
+.hint {
+  font-size: 12px;
+  color: #999;
+  margin-top: -4px;
+  margin-bottom: 12px;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-group textarea:focus {
+  border-color: #1890ff;
+}
+
 .form-group {
   margin-bottom: 16px;
 }
@@ -474,4 +535,125 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #bfbfbf;
+}
+
+/* Op Log floating panel */
+.op-log-panel {
+  position: fixed;
+  top: 80px;
+  right: 16px;
+  width: 340px;
+  max-height: 60vh;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  font-size: 12px;
+}
+.op-log-panel[hidden] { display: none; }
+.op-log-panel.collapsed .op-log-body { display: none; }
+.op-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  border-radius: 8px 8px 0 0;
+}
+.op-log-title { font-weight: 600; color: #555; }
+.op-log-actions { display: flex; gap: 4px; }
+.op-log-btn {
+  background: transparent;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: #666;
+  font-size: 11px;
+}
+.op-log-btn:hover { background: #f0f0f0; }
+.op-log-body {
+  overflow-y: auto;
+  padding: 8px 12px;
+  flex: 1;
+}
+.op-log-item {
+  padding: 6px 0;
+  border-bottom: 1px dashed #f0f0f0;
+  word-break: break-word;
+}
+.op-log-item:last-child { border-bottom: none; }
+.op-log-time { color: #999; margin-right: 6px; }
+.op-log-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 10px;
+  margin-right: 6px;
+}
+.op-log-tag.scrape { background: #fff7e6; color: #d46b08; }
+.op-log-tag.scraped { background: #f6ffed; color: #389e0d; }
+.op-log-tag.catalog_hit { background: #f9f0ff; color: #722ed1; }
+.op-log-tag.ingest_done { background: #e6fffb; color: #08979c; }
+.op-log-tag.image_ingest_start, .op-log-tag.image_ingest_done { background: #fff0f6; color: #c41d7f; }
+.op-log-url {
+  color: #1677ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+.op-log-url:hover { text-decoration: underline; }
+.op-log-msg { color: #333; }
+
+/* book source tag (左侧规则书列表) */
+.book-source-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-left: 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: normal;
+  vertical-align: middle;
+}
+.book-source-tag.pdf { background: #e6f4ff; color: #1677ff; }
+.book-source-tag.image { background: #fff0f6; color: #c41d7f; }
+.book-source-tag.bilibili { background: #f9f0ff; color: #722ed1; }
+
+/* source thumbnails */
+.source-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.source-thumbs img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  cursor: pointer;
+}
+
+/* cited badge：LLM 答案显式引用 */
+.source-cited-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: normal;
+  vertical-align: middle;
+  background: #f6ffed;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
+  border-radius: 10px;
+}
+.source-item.source-cited {
+  border-left: 3px solid #52c41a;
+  padding-left: 10px;
 }

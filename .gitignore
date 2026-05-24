@@ -8,9 +8,14 @@ node_modules/
 
 # ===== 运行时产物 =====
 data/temp/
+data/cache/
+data/.embeddings-cache.json
 server/storage/*.db
 server/storage/*.sqlite
 server/storage/*.json
+server/metrics/*.jsonl
+server/feedback/*.jsonl
+server/feedback/staging/
 
 # ===== 日志 =====
 *.log
@@ -34,3 +39,5 @@ dist/
 build/
 .cache/
 coverage/
+INTERVIEW_DRILL.md
+AGENT_GRAPH.md

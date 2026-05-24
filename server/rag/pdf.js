@@ -140,9 +140,55 @@ async function getPDFInfo(pdfPath) {
   };
 }
 
+/**
+ * 带图片对齐的切分器：在 OCR 文本之间插入 sentinel `<<IMG:n>>`，
+ * 切完后扫每个 chunk 收集出现过的 imageIndices，并把 sentinel 从内容里清掉。
+ *
+ * @param {string} prefixText - 不属于任何图片的前置文本（标题、原文文字段等），可空
+ * @param {Array<{imageIndex:number, text:string}>} segments
+ * @param {number} chunkSize
+ * @param {number} overlap
+ * @returns {Array<{text:string, metadata:{index, source, imageIndices:number[]}}>}
+ */
+function splitTextWithImageMap(prefixText, segments, chunkSize = 500, overlap = 50) {
+  const sentinel = (i) => `<<IMG:${i}>>`;
+
+  const parts = [];
+  if (prefixText && prefixText.trim()) parts.push(prefixText.trim());
+  for (const seg of segments || []) {
+    parts.push(sentinel(seg.imageIndex));
+    if (seg.text && seg.text.trim()) parts.push(seg.text);
+  }
+  const composite = parts.join('\n\n');
+
+  const rawChunks = splitTextIntoChunks(composite, chunkSize, overlap);
+
+  return rawChunks.map((c) => {
+    const found = new Set();
+    const re = /<<IMG:(\d+)>>/g;
+    let m;
+    while ((m = re.exec(c.text)) !== null) {
+      found.add(Number(m[1]));
+    }
+    const cleaned = c.text
+      .replace(/<<IMG:\d+>>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+    return {
+      text: cleaned,
+      metadata: {
+        ...c.metadata,
+        imageIndices: Array.from(found).sort((a, b) => a - b),
+      },
+    };
+  }).filter(c => c.text.length > 0);
+}
+
 module.exports = {
   parsePDF,
   preprocessText,
   splitTextIntoChunks,
+  splitTextWithImageMap,
   getPDFInfo,
 };
